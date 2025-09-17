@@ -20,6 +20,44 @@ Minimal chat UI wired to your n8n AI agent via a Vercel proxy. No settings, no e
      - (Optional) `N8N_SHARED_SECRET` = `some-strong-string`
 3) Deploy. Open the site and send a message.
 
+## Testing your deployment
+
+After deploying, test your setup:
+
+1. **Health check**: Visit `https://your-domain.vercel.app/api/ping`
+   - Should return `{"ok":true,"time":"...","env":{"hasWebhookUrl":true}}`
+   - If `hasWebhookUrl` is `false`, add `N8N_WEBHOOK_URL` to your Vercel environment variables
+
+2. **Chat functionality**: Send a test message on your site
+   - If you get a 404 error, check these common issues:
+     - Your n8n workflow is not active/deployed
+     - The `N8N_WEBHOOK_URL` doesn't match your actual n8n webhook URL
+     - Your n8n instance is not accessible from the internet
+
+## Troubleshooting
+
+**Common Issues:**
+
+- **"404 Not Found" from n8n**: Your n8n workflow is inactive or the webhook URL is wrong
+  - Solution: Activate your n8n workflow and verify the webhook URL matches `N8N_WEBHOOK_URL`
+
+- **CORS errors**: You're calling n8n directly instead of using the proxy
+  - Solution: Ensure `config.js` uses `"/api/chat"` not a direct n8n URL
+
+- **"N8N_WEBHOOK_URL is not configured"**: Missing environment variable
+  - Solution: Add `N8N_WEBHOOK_URL` in your Vercel project settings
+
+**Testing commands:**
+```bash
+# Test health check
+curl https://your-domain.vercel.app/api/ping
+
+# Test chat proxy (should return n8n response or error)
+curl -X POST https://your-domain.vercel.app/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"test","sessionId":"test"}'
+```
+
 ## n8n response format
 
 - Plain text:
