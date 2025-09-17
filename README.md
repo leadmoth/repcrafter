@@ -34,4 +34,4 @@ Minimal chat UI wired to your n8n AI agent via a Vercel proxy. No settings, no e
 
 ## Security
 
-- Prefer the `/api/chat` proxy. Validate `X-Shared-Secret` in your n8n workflow if you set `N8N_SHARED_SECRET`.
+- Prefer the `/api/chat` proxy. Validate `X-Shared-Secret` in your n8n workflow if you set `N8N_SHARED_SECRET`."# REPCRAFTER" 
