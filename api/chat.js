@@ -1,64 +1,47 @@
-export default async function handler(req, res) {
-  // CORS
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shared-Secret');
-  if (req.method === 'OPTIONS') return res.status(204).end();
+const { parseCookies } = require('./_lib/cookies');
+const { verify } = require('./_lib/jwt');
+const Stripe = require('stripe');
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY');
 
-  const target = process.env.N8N_WEBHOOK_URL || '';
-
-  // Debug helper to confirm which upstream URL is configured
-  if (req.method === 'GET' && req.query?.debug === '1') {
-    return res.status(200).json({ using: target || '(missing N8N_WEBHOOK_URL)' });
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-  if (!target) {
-    return res.status(500).json({ error: 'Missing N8N_WEBHOOK_URL' });
-  }
-
+module.exports = async (req, res) => {
   try {
-    // Read JSON body robustly
-    let body = req.body;
-    if (body == null || typeof body !== 'object') {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const raw = Buffer.concat(chunks).toString();
-      body = raw ? JSON.parse(raw) : {};
-    }
+    if (req.method !== 'POST') return res.status(405).end();
 
-    // Send both camelCase and snake_case for n8n memory nodes
-    const payload = {
-      chatInput: body.chatInput ?? body.prompt ?? body.text ?? '',
-      prompt: body.prompt ?? body.chatInput ?? body.text ?? '',
-      sessionId: body.sessionId ?? body.session_id,
-      session_id: body.sessionId ?? body.session_id,
-      history: body.history,
-      metadata: body.metadata,
-    };
+    // 1) Auth
+    const cookies = parseCookies(req.headers.cookie || '');
+    const token = cookies.session || '';
+    if (!token) return res.status(401).json({ error: 'unauthorized' });
+    let sess;
+    try { sess = verify(token, process.env.SESSION_SECRET); }
+    catch { return res.status(401).json({ error: 'unauthorized' }); }
 
-    const upstream = await fetch(target, {
+    // 2) Payment check
+    const customer = sess.stripe_customer_id;
+    if (!customer) return res.status(402).json({ error: 'payment_required' });
+    const intents = await stripe.paymentIntents.list({ customer, limit: 10 });
+    const paid = intents.data.some(pi => pi.status === 'succeeded' && pi.metadata && pi.metadata.product === 'rep199');
+    if (!paid) return res.status(402).json({ error: 'payment_required' });
+
+    // 3) Proxy to n8n webhook
+    const upstream = await fetch(process.env.N8N_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(process.env.N8N_SHARED_SECRET ? { 'X-Shared-Secret': process.env.N8N_SHARED_SECRET } : {}),
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {})
     });
 
-    // Passthrough: same status, same content-type, exact body
-    const upstreamCT = upstream.headers.get('content-type') || 'text/plain; charset=utf-8';
-    const text = await upstream.text();
+    const contentType = upstream.headers.get('content-type') || '';
+    const bodyText = await upstream.text();
 
     res.status(upstream.status);
-    res.setHeader('Content-Type', upstreamCT);
-    return res.send(text);
+    if (contentType.includes('application/json')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.send(bodyText);
+    } else {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.send(bodyText);
+    }
   } catch (e) {
-    console.error('Proxy error:', e);
-    return res.status(500).json({ error: 'Proxy error' });
+    console.error(e);
+    res.status(500).json({ error: 'chat_proxy_failed' });
   }
-}
+};

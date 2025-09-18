@@ -24,10 +24,7 @@ body{
 }
 
 /* Buttons */
-.btn{
-  border:none; border-radius:10px; padding:10px 14px; font-weight:700;
-  cursor:pointer; transition:transform .1s ease, opacity .1s ease, background .15s ease, color .15s ease;
-}
+.btn{ border:none; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; transition:transform .1s ease, opacity .1s ease, background .15s ease, color .15s ease; }
 .btn:disabled{ opacity:.6; cursor:not-allowed }
 .btn:active{ transform:translateY(1px) }
 .btn-primary{ background:var(--accent); color:#0b1020 }
@@ -48,36 +45,24 @@ body{
 
 /* Chat area */
 .chat{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:10px 12px 12px;
-  max-width:900px; width:100%;
-  margin:0 auto;
-  min-height:0;
+  flex:1; display:flex; flex-direction:column; gap:10px;
+  padding:10px 12px 12px; max-width:900px; width:100%; margin:0 auto; min-height:0;
 }
-
 .messages{
   list-style:none; padding:0; margin:0;
   display:flex; flex-direction:column; gap:12px;
   overflow:auto; scroll-behavior:smooth;
-  flex:1; min-height:0;
-  padding-bottom:10px;
+  flex:1; min-height:0; padding-bottom:10px;
 }
 
 /* Message layout with avatars */
-.message{
-  display:flex; gap:10px; align-items:flex-start;
-  width:100%;
-}
+.message{ display:flex; gap:10px; align-items:flex-start; width:100% }
 .message.user{ flex-direction:row-reverse }
 
 .avatar{
   flex:0 0 32px; width:32px; height:32px;
   display:flex; align-items:center; justify-content:center;
-  border-radius:50%;
-  background:#0f1420; border:1px solid var(--border);
+  border-radius:50%; background:#0f1420; border:1px solid var(--border);
   font-size:16px; line-height:1;
 }
 .message.user .avatar{ background:#131824 }
@@ -86,9 +71,7 @@ body{
 /* Content area follows the bubble width */
 .message .content{
   display:flex; flex-direction:column; align-items:flex-start; gap:6px;
-  max-width:100%;
-  flex:1 1 auto;          /* Allow the content to take remaining width */
-  min-width:0;            /* Prevent unintended min-content sizing */
+  max-width:100%; flex:1 1 auto; min-width:0;
 }
 .message.user .content{ align-items:flex-end }
 
@@ -100,9 +83,9 @@ body{
   border-radius:14px 14px 14px 6px;
   max-width:min(96%, 80ch);
   white-space:pre-wrap;
-  overflow-wrap:break-word; /* break long words only if necessary */
-  word-break:normal;        /* avoid breaking inside words */
-  hyphens:none;             /* no auto hyphenation */
+  overflow-wrap:break-word;
+  word-break:normal;
+  hyphens:none;
   background:var(--bubble-bot);
   color:var(--text);
 }
@@ -128,6 +111,7 @@ body{
 }
 .composer textarea:focus{ box-shadow:var(--ring); border-color:#2a2f3a }
 
+/* Typing indicator */
 .typing{ display:inline-flex; align-items:center; gap:6px }
 .typing span{
   display:inline-block; width:6px; height:6px; background:#9fb6ff; border-radius:50%;
@@ -136,6 +120,19 @@ body{
 .typing span:nth-child(2){ animation-delay:.15s }
 .typing span:nth-child(3){ animation-delay:.3s }
 @keyframes blink{ 0%,80%,100%{opacity:.25;transform:translateY(0)} 40%{opacity:1;transform:translateY(-2px)} }
+
+/* Modals */
+.modal{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); backdrop-filter: blur(2px);
+}
+.modal[hidden]{ display:none }
+.modal-card{
+  width:min(90vw, 420px); background:#0f131b; border:1px solid var(--border);
+  border-radius:12px; padding:18px; box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.modal-card h2{ margin:0 0 6px 0 }
+.modal-card .muted{ color:var(--muted); margin:0 0 14px 0 }
 
 @media (max-width:600px){
   .bubble{ max-width:100% }
