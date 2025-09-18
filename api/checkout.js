@@ -2,7 +2,7 @@
 // - If STRIPE_PRICE_ID is a recurring price -> mode: 'subscription'.
 // - If STRIPE_PRICE_ID is a one-time price -> mode: 'payment'.
 // - If no price is configured, falls back to inline one-time price_data.
-// Optional: you can pass { priceId } or { interval: 'month'|'year' } in the POST body.
+// Optional: you can pass { priceId } or { interval: 'month'|'year', returnTo } in the POST body.
 
 const { parseCookies } = require('./_lib/cookies');
 const { verify } = require('./_lib/jwt');
@@ -41,17 +41,22 @@ module.exports = async (req, res) => {
     const success_url = `${returnTo}?paid=1`;
     const cancel_url = returnTo;
 
-    // Optional: extract email from your session cookie for Stripe prefill
+    // Extract user from session
     let customer_email;
+    let stripe_customer_id;
+    let user_id; // e.g., Google sub
     try {
       const cookies = parseCookies(req.headers.cookie || '');
       const token = cookies.session;
       if (token && process.env.SESSION_SECRET) {
         const payload = verify(token, process.env.SESSION_SECRET);
         if (payload?.email) customer_email = payload.email;
+        if (payload?.stripe_customer_id) stripe_customer_id = payload.stripe_customer_id;
+        if (payload?.sub) user_id = payload.sub;
       }
     } catch {}
 
+    // Determine line items and mode
     const envPriceId = process.env.STRIPE_PRICE_ID;
     const reqPriceId = body?.priceId;
     const priceId = envPriceId || reqPriceId;
@@ -94,17 +99,30 @@ module.exports = async (req, res) => {
       }
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const params = {
       mode,
       success_url,
       cancel_url,
       line_items,
       allow_promotion_codes: true,
-      billing_address_collection: 'auto',
-      customer_email
-      // For subscriptions you can also pass:
-      // subscription_data: { trial_from_plan: true }
-    });
+      billing_address_collection: 'auto'
+    };
+
+    // Prefer binding to known Customer; fall back to email
+    if (stripe_customer_id) {
+      params.customer = stripe_customer_id;
+      // For guest checkouts (no saved payment methods), optionally:
+      // params.customer_creation = 'if_required';
+    } else if (customer_email) {
+      params.customer_email = customer_email;
+      // Optionally create a Customer automatically when needed:
+      // params.customer_creation = 'if_required';
+    }
+
+    // Helpful for mapping sessions back to your user in logs/webhooks
+    if (user_id) params.client_reference_id = user_id;
+
+    const session = await stripe.checkout.sessions.create(params);
 
     return res.status(200).json({ url: session.url });
   } catch (e) {
