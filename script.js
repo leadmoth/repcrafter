@@ -2,12 +2,23 @@
   const form = document.getElementById('chatForm');
   const input = document.getElementById('userInput');
   const messagesEl = document.getElementById('messages');
-  const WEBHOOK_URL = (window.REPCRAFTER_CONFIG && window.REPCRAFTER_CONFIG.WEBHOOK_URL) || '/api/chat';
+
+  const cfg = (window.REPCRAFTER_CONFIG || {});
+  const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
+
+  // Enable "show exactly what the server returned" with either:
+  // - URL param ?raw=1
+  // - window.REPCRAFTER_CONFIG.RAW_MODE = true
+  const params = new URLSearchParams(location.search);
+  const RAW_MODE = params.get('raw') === '1' || !!cfg.RAW_MODE;
+
+  // Extra console logging when ?debug=1 or config.DEBUG = true
+  const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
 
   function appendMessage(role, text) {
     const li = document.createElement('li');
     li.className = `msg msg-${role}`;
-    li.textContent = text;
+    li.textContent = String(text ?? '');
     messagesEl.appendChild(li);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
@@ -15,10 +26,6 @@
   function truncate(s, n) {
     if (typeof s !== 'string') s = String(s ?? '');
     return s.length > n ? s.slice(0, n - 1) + '…' : s;
-  }
-
-  async function safeText(resp) {
-    try { return await resp.text(); } catch { return ''; }
   }
 
   function newSessionId() {
@@ -44,15 +51,28 @@
         body: JSON.stringify({ chatInput: userText, sessionId })
       });
 
+      const status = resp.status;
       const contentType = resp.headers.get('content-type') || '';
+      const rawBody = await resp.text(); // read once, parse from this if needed
+
+      if (DEBUG) {
+        console.debug('[chat] upstream status:', status);
+        console.debug('[chat] upstream content-type:', contentType);
+        console.debug('[chat] upstream body (first 200):', truncate(rawBody, 200));
+      }
+
       if (!resp.ok) {
-        const errText = await safeText(resp);
-        throw new Error(`Webhook error ${resp.status}: ${truncate(errText, 240)}`);
+        throw new Error(`Webhook error ${status}: ${truncate(rawBody, 240)}`);
       }
 
       let replyText = '';
-      if (contentType.includes('application/json')) {
-        const data = await resp.json();
+
+      if (RAW_MODE) {
+        // Show exactly what the server sent (JSON string or plain text)
+        replyText = rawBody;
+      } else if (contentType.includes('application/json')) {
+        let data;
+        try { data = rawBody ? JSON.parse(rawBody) : {}; } catch { data = {}; }
         replyText =
           (typeof data.reply === 'string' && data.reply) ||
           (Array.isArray(data.messages) && data.messages.map(m => m?.text ?? m).filter(Boolean).join('\n')) ||
@@ -65,12 +85,12 @@
           (typeof data.result === 'string' && data.result) ||
           (typeof data.response === 'string' && data.response) ||
           (typeof data === 'string' && data) ||
-          JSON.stringify(data);
+          rawBody; // fallback: show raw JSON string
       } else {
-        replyText = await resp.text();
+        // Non-JSON: show as-is
+        replyText = rawBody;
       }
 
-      // Replace the last bot placeholder message with real text
       const lastBot = messagesEl.querySelector('li.msg-bot:last-of-type');
       if (lastBot) lastBot.textContent = replyText || '...';
     } catch (err) {
