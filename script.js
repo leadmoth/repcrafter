@@ -137,10 +137,36 @@
     gate();
   };
 
-  function initializeGSI() {
-    if (!window.google || !GOOGLE_CLIENT_ID) return;
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
+ // Only the Google callback block changed below to surface server error details.
+// Find the initializeGSI() function and replace the callback with this block:
+
+// ...
+google.accounts.id.initialize({
+  client_id: GOOGLE_CLIENT_ID,
+  callback: async (resp) => {
+    try {
+      const verify = await fetch('/api/auth/google-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ credential: resp.credential })
+      });
+      const data = await verify.json().catch(() => ({}));
+      if (!verify.ok) {
+        const reason = data && (data.detail || data.error) ? `${data.error}: ${data.detail || ''}` : 'auth verify failed';
+        throw new Error(reason);
+      }
+      hideAuthModal();
+      await gate();
+    } catch (e) {
+      console.error(e);
+      alert(`Sign-in failed: ${e.message}`);
+    }
+  },
+  ux_mode: 'popup',
+  auto_select: false
+});
+// ...
      
       
       // ... inside initializeGSI(), keep config but replace the callback block with:
