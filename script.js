@@ -3,13 +3,14 @@
   const input = document.getElementById('userInput');
   const messagesEl = document.getElementById('messages');
   const newChatBtn = document.getElementById('newChatBtn');
+  const signOutBtn = document.getElementById('signOutBtn'); // Added for sign out
 
   const authModal = document.getElementById('authModal');
   const gsiContainer = document.getElementById('gsiContainer');
   const authClose = document.getElementById('authClose');
   const payModal = document.getElementById('payModal');
   const payBtn = document.getElementById('payBtn');
-  const payClose = document.getElementById('payClose');
+  // payClose removed
 
   const cfg = (window.REPCRAFTER_CONFIG || {});
   const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
@@ -20,7 +21,6 @@
 
   const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
 
-  // Safe UUID-ish generator with fallback (won't crash if crypto is missing)
   function safeRandomHex(len) {
     try {
       if (window.crypto?.getRandomValues) {
@@ -29,7 +29,6 @@
         return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, len);
       }
     } catch {}
-    // Fallback
     let out = '';
     while (out.length < len) out += Math.floor(Math.random() * 16).toString(16);
     return out.slice(0, len);
@@ -37,9 +36,8 @@
   function newSessionId() {
     return `${safeRandomHex(8)}-${safeRandomHex(4)}-${safeRandomHex(4)}-${safeRandomHex(4)}-${safeRandomHex(12)}`;
   }
-  let sessionId = null; // set after load
+  let sessionId = null;
 
-  // Ensure fresh state on bfcache
   window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
   function timeNow() {
@@ -91,7 +89,6 @@
     bubbleEl.textContent = String(newText ?? '');
   }
 
-  // New chat
   function startNewChat() {
     try {
       if (!sessionId) sessionId = newSessionId();
@@ -109,13 +106,24 @@
     startNewChat();
   });
 
-  // Textarea auto-resize
+  if (signOutBtn) {
+    signOutBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        location.reload();
+      } catch (e) {
+        console.error('Sign out failed:', e);
+        alert('Could not sign out. Please try again.');
+      }
+    });
+  }
+
   input?.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
-  // Enter-to-send with IME-safe handling
   let composing = false;
   input?.addEventListener('compositionstart', () => composing = true);
   input?.addEventListener('compositionend', () => composing = false);
@@ -126,7 +134,6 @@
     }
   });
 
-  // Auth & pay gating
   let authed = false;
   let paid = false;
 
@@ -195,7 +202,6 @@
 
   async function gate() {
     try {
-      // TEMP bypass to recover UI quickly
       if (cfg.BYPASS_AUTH === true || cfg.REQUIRE_AUTH === false) {
         authed = true; paid = true;
         hideAuthModal(); hidePayModal();
@@ -223,28 +229,27 @@
       setComposerEnabled(true);
     } catch (e) {
       console.error('[gate] failed:', e);
-      // Don’t crash the UI; keep composer disabled but keep greeting visible
       setComposerEnabled(false);
       if (cfg.REQUIRE_AUTH !== false) showAuthModal();
     }
   }
 
   authClose?.addEventListener('click', hideAuthModal);
-  payClose?.addEventListener('click', hidePayModal);
+  // payClose removed; pay modal can't be dismissed
+
   payBtn?.addEventListener('click', async () => {
     try {
       const origin = location.origin;
       const res = await fetch('/api/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnTo: origin }) });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(data.error || 'Failed to start checkout');
-      location.href = data.url; // secure redirect to Stripe Checkout
+      location.href = data.url;
     } catch (e) {
       console.error(e);
       alert('Could not start checkout. Try again.');
     }
   });
 
-  // Handle paid=1 return
   if (params.get('paid') === '1') {
     (async () => { await gate(); })();
   }
@@ -303,7 +308,6 @@
     }
   });
 
-  // Initialize AFTER DOM is ready
   window.addEventListener('load', () => {
     try {
       sessionId = newSessionId();
@@ -312,7 +316,6 @@
       gate();
     } catch (e) {
       console.error('[load init] failed:', e);
-      // At least show the greeting so the UI isn’t blank
       try { startNewChat(); } catch {}
     }
   });
