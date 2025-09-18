@@ -141,22 +141,28 @@
     if (!window.google || !GOOGLE_CLIENT_ID) return;
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      callback: async (resp) => {
-        try {
-          const verify = await fetch('/api/auth/google-verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ credential: resp.credential })
-          });
-          if (!verify.ok) throw new Error('auth verify failed');
-          hideAuthModal();
-          await gate();
-        } catch (e) {
-          console.error(e);
-          alert('Sign-in failed. Please try again.');
-        }
-      },
+     
+      
+      // ... inside initializeGSI(), keep config but replace the callback block with:
+callback: async (resp) => {
+  try {
+    const verify = await fetch('/api/auth/google-verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ credential: resp.credential })
+    });
+    const data = await verify.json().catch(() => ({}));
+    if (!verify.ok) {
+      throw new Error(data && data.detail ? data.detail : 'auth verify failed');
+    }
+    hideAuthModal();
+    await gate();
+  } catch (e) {
+    console.error(e);
+    alert(`Sign-in failed: ${e.message}`);
+  }
+},
       ux_mode: 'popup',
       auto_select: false
     });
