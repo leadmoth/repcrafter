@@ -6,22 +6,31 @@
   <title>REPCRAFTER</title>
   <meta name="description" content="REPCRAFTER – AI coach chat" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='16' fill='%23000'/%3E%3Ctext x='50%25' y='58%25' font-family='monospace' font-size='42' text-anchor='middle' fill='%23fff'%3ER%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=1" />
   <script src="config.js" defer></script>
-  <script src="script.js" defer></script>
+  <script src="script.js?v=1" defer></script>
 </head>
 <body>
   <header class="app-header">
-    <h1>REPCRAFTER</h1>
-    <button id="newChatBtn" class="send-btn" type="button" title="Start a new chat" style="margin-left:12px;">New chat</button>
+    <div class="brand">
+      <span class="logo">💪</span>
+      <h1>REPCRAFTER</h1>
+    </div>
+    <div class="actions">
+      <button id="newChatBtn" class="btn btn-ghost" type="button" title="Start a new chat">New chat ↻</button>
+    </div>
   </header>
 
   <main class="chat">
     <ul id="messages" class="messages" aria-live="polite"></ul>
 
     <form id="chatForm" class="composer" autocomplete="off">
+      <div class="left-tools">
+        <button id="emojiToggle" type="button" class="emoji-toggle" title="Insert emoji">😊</button>
+        <div id="emojiPanel" class="emoji-panel" hidden></div>
+      </div>
       <textarea id="userInput" placeholder="Type your answer..." rows="1"></textarea>
-      <button id="sendBtn" type="submit" class="send-btn" title="Send">Send</button>
+      <button id="sendBtn" type="submit" class="btn btn-primary" title="Send">Send</button>
     </form>
   </main>
 
