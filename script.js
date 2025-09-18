@@ -1,212 +1,157 @@
-(function () {
-  const form = document.getElementById('chatForm');
-  const input = document.getElementById('userInput');
-  const messagesEl = document.getElementById('messages');
-  const newChatBtn = document.getElementById('newChatBtn');
-  const emojiToggle = document.getElementById('emojiToggle');
-  const emojiPanel = document.getElementById('emojiPanel');
+:root{
+  --bg:#0e0f12;
+  --panel:#15171c;
+  --muted:#8b93a0;
+  --text:#e7e9ee;
+  --accent:#7aa2ff;
+  --border:#23262d;
+  --bubble-user:#1e232d;
+  --bubble-bot:#141924;
+  --ring:0 0 0 2px rgba(122,162,255,.25);
+}
 
-  const cfg = (window.REPCRAFTER_CONFIG || {});
-  const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
+*{box-sizing:border-box}
+html,body{height:100%; min-height:100dvh}
+body{
+  margin:0;
+  font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,"Helvetica Neue",Arial;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(122,162,255,.08), transparent),
+    radial-gradient(800px 500px at -10% 100%, rgba(7, 176, 255, .06), transparent),
+    var(--bg);
+  color:var(--text);
+  display:flex; flex-direction:column;
+}
 
-  const params = new URLSearchParams(location.search);
-  const RAW_MODE = params.get('raw') === '1' || !!cfg.RAW_MODE;
-  const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
+/* Buttons */
+.btn{
+  border:none; border-radius:10px; padding:10px 14px; font-weight:700;
+  cursor:pointer; transition:transform .1s ease, opacity .1s ease, background .15s ease, color .15s ease;
+}
+.btn:disabled{ opacity:.6; cursor:not-allowed }
+.btn:active{ transform:translateY(1px) }
+.btn-primary{ background:var(--accent); color:#0b1020 }
+.btn-ghost{ background:transparent; color:var(--text); border:1px solid var(--border) }
+.btn-ghost:hover{ background:#11151f }
 
-  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
+/* Header / Footer */
+.app-header,.app-footer{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 14px; border-bottom:1px solid var(--border);
+  background:rgba(0,0,0,.25); backdrop-filter: blur(4px);
+}
+.app-footer{ border-top:1px solid var(--border); border-bottom:none; justify-content:center }
+.brand{ display:flex; align-items:center; gap:10px }
+.brand .logo{ font-size:18px }
+.app-header h1{ font-size:16px; margin:0; letter-spacing:.8px }
+.actions{ display:flex; gap:8px; align-items:center }
 
-  function newSessionId() {
-    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-    );
-  }
-  let sessionId = newSessionId();
+/* Chat area */
+.chat{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:10px;           /* tightened to remove visual artifact */
+  padding:10px 12px 12px;
+  max-width:900px; width:100%;
+  margin:0 auto;
+  min-height:0;       /* allow children to overflow correctly */
+}
 
-  // Force fresh state if page is restored from bfcache
-  window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+.messages{
+  list-style:none; padding:0; margin:0;
+  display:flex; flex-direction:column; gap:12px;
+  overflow:auto; scroll-behavior:smooth;
+  flex:1; min-height:0;
+}
 
-  function timeNow() {
-    try { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
-    catch { return ''; }
-  }
+/* Message layout with avatars */
+.message{ display:flex; gap:10px; align-items:flex-start }
+.message.user{ flex-direction:row-reverse }
 
-  function makeMessageEl(role, text, showMeta=true) {
-    const li = document.createElement('li');
-    li.className = `message ${role}`;
+.avatar{
+  flex:0 0 32px; width:32px; height:32px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%;
+  background:#0f1420; border:1px solid var(--border);
+  font-size:16px; line-height:1;
+}
+.message.user .avatar{ background:#131824 }
+.message.bot .avatar{ background:#101522 }
 
-    const avatar = document.createElement('div');
-    avatar.className = 'avatar';
-    avatar.textContent = role === 'user' ? '🧑' : '🤖';
+/* Content area follows the bubble width */
+.message .content{
+  display:flex; flex-direction:column; align-items:flex-start; gap:6px;
+  max-width:100%;
+}
+.message.user .content{ align-items:flex-end }
 
-    const content = document.createElement('div');
-    content.className = 'content';
+/* Bubble */
+.bubble{
+  display:inline-block;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:14px 14px 14px 6px;
+  max-width:min(96%, 80ch);
+  white-space:pre-wrap;
+  overflow-wrap:break-word;
+  background:var(--bubble-bot);
+}
+.message.user .bubble{
+  background:var(--bubble-user);
+  border-radius:14px 14px 6px 14px;
+}
 
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    if (text instanceof Element) {
-      bubble.appendChild(text);
-    } else {
-      bubble.textContent = String(text ?? '');
-    }
+.meta{ font-size:12px; color:var(--muted); margin-top:0 }
 
-    content.appendChild(bubble);
+/* Composer pinned to bottom */
+.composer{
+  position:sticky; bottom:0; z-index:5;
+  display:flex; gap:10px; padding:10px; background:var(--panel);
+  border:1px solid var(--border); border-radius:12px;
+  align-items:flex-end;
+  box-shadow: 0 -6px 20px rgba(0,0,0,.25); /* smooth transition, hides any line artifact */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+.composer .left-tools{ display:flex; align-items:center; gap:6px }
+.composer textarea{
+  flex:1; resize:none; min-height:42px; max-height:160px;
+  padding:10px 12px; border-radius:8px; border:1px solid var(--border);
+  background:#0e121a; color:var(--text); outline:none;
+}
+.composer textarea:focus{ box-shadow:var(--ring); border-color:#2a2f3a }
 
-    if (showMeta) {
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = timeNow();
-      content.appendChild(meta);
-    }
+/* Emoji toggle and panel */
+.emoji-toggle{
+  width:36px; height:36px; border-radius:8px; border:1px solid var(--border);
+  background:#0e121a; color:#fff; cursor:pointer;
+}
+.emoji-toggle:hover{ background:#111827 }
 
-    li.appendChild(avatar);
-    li.appendChild(content);
-    return { li, bubble };
-  }
+.emoji-panel{
+  position:absolute; bottom:58px; left:10px;
+  display:grid; grid-template-columns: repeat(8, 28px); gap:6px;
+  background:#0e121a; border:1px solid var(--border); border-radius:10px;
+  padding:8px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  max-width: 320px; z-index:10;
+}
+.emoji-panel[hidden]{ display:none }
+.emoji-panel button{
+  width:28px; height:28px; border-radius:6px; border:1px solid transparent;
+  background:transparent; cursor:pointer; font-size:18px; line-height:1;
+}
+.emoji-panel button:hover{ background:#141927; border-color:#222635 }
 
-  function appendMessage(role, text, opts={}) {
-    const { showMeta=true } = opts;
-    const { li, bubble } = makeMessageEl(role, text, showMeta);
-    messagesEl.appendChild(li);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    return { li, bubble };
-  }
+/* Typing indicator bubble */
+.typing{ display:inline-flex; align-items:center; gap:6px }
+.typing span{
+  display:inline-block; width:6px; height:6px; background:#9fb6ff; border-radius:50%;
+  animation: blink 1.3s infinite ease-in-out;
+}
+.typing span:nth-child(2){ animation-delay:.15s }
+.typing span:nth-child(3){ animation-delay:.3s }
+@keyframes blink{ 0%,80%,100%{opacity:.25;transform:translateY(0)} 40%{opacity:1;transform:translateY(-2px)} }
 
-  function showTyping() {
-    const dots = document.createElement('div');
-    dots.className = 'typing';
-    dots.innerHTML = '<span></span><span></span><span></span>';
-    const { li, bubble } = appendMessage('bot', dots);
-    return { li, bubble };
-  }
-
-  function replaceBubbleContent(bubbleEl, newText) {
-    if (!bubbleEl) return;
-    // Clear and set plain text
-    bubbleEl.textContent = String(newText ?? '');
-  }
-
-  // Emoji picker
-  const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🤔','🙌','👍','🔥','💪','🏃‍♂️','🏋️‍♂️','🧘','🥗','🍎','⏱️','✅','⭐','💡','📅','📈','📝','🎯','🧠','⚡','🏆','👏','🤝','🚀'];
-  function renderEmojiPanel() {
-    emojiPanel.innerHTML = '';
-    EMOJIS.forEach(e => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = e;
-      btn.addEventListener('click', () => {
-        insertAtCursor(input, e);
-        input.focus();
-      });
-      emojiPanel.appendChild(btn);
-    });
-  }
-  function insertAtCursor(textarea, text) {
-    const start = textarea.selectionStart ?? textarea.value.length;
-    const end = textarea.selectionEnd ?? textarea.value.length;
-    const value = textarea.value;
-    textarea.value = value.slice(0, start) + text + value.slice(end);
-    const pos = start + text.length;
-    textarea.selectionStart = textarea.selectionEnd = pos;
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-  function toggleEmojiPanel(show) {
-    if (show === true) emojiPanel.hidden = false;
-    else if (show === false) emojiPanel.hidden = true;
-    else emojiPanel.hidden = !emojiPanel.hidden;
-  }
-  if (emojiToggle && emojiPanel) {
-    renderEmojiPanel();
-    emojiToggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleEmojiPanel();
-    });
-    document.addEventListener('click', (e) => {
-      if (!emojiPanel.hidden && !emojiPanel.contains(e.target) && e.target !== emojiToggle) {
-        toggleEmojiPanel(false);
-      }
-    });
-  }
-
-  // New chat button: fresh session + greet
-  function startNewChat() {
-    sessionId = newSessionId();
-    messagesEl.innerHTML = '';
-    input.value = '';
-    appendMessage('bot', GREETING);
-    if (DEBUG) console.debug('[chat] New session started:', sessionId);
-  }
-  if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
-
-  // Initial greeting on load
-  startNewChat();
-
-  // Auto-resize textarea
-  input.addEventListener('input', () => {
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const userText = (input.value || '').trim();
-    if (!userText) return;
-
-    appendMessage('user', userText);
-    input.value = '';
-    input.style.height = '42px';
-    toggleEmojiPanel(false);
-
-    const typing = showTyping();
-
-    try {
-      const resp = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatInput: userText, sessionId })
-      });
-
-      const status = resp.status;
-      const contentType = resp.headers.get('content-type') || '';
-      const rawBody = await resp.text();
-
-      if (DEBUG) {
-        console.debug('[chat] sessionId:', sessionId);
-        console.debug('[chat] upstream status:', status);
-        console.debug('[chat] upstream content-type:', contentType);
-        console.debug('[chat] upstream body (first 200):', (rawBody || '').slice(0, 200));
-      }
-
-      if (!resp.ok) {
-        throw new Error(`Webhook error ${status}: ${rawBody}`);
-      }
-
-      let replyText = '';
-      if (RAW_MODE) {
-        replyText = rawBody;
-      } else if (contentType.includes('application/json')) {
-        let data;
-        try { data = rawBody ? JSON.parse(rawBody) : {}; } catch { data = {}; }
-        replyText =
-          (typeof data.reply === 'string' && data.reply) ||
-          (Array.isArray(data.messages) && data.messages.map(m => m?.text ?? m).filter(Boolean).join('\n')) ||
-          (typeof data.text === 'string' && data.text) ||
-          (typeof data.answer === 'string' && data.answer) ||
-          (typeof data.output === 'string' && data.output) ||
-          (typeof data.completion === 'string' && data.completion) ||
-          (data?.choices?.[0]?.message?.content) ||
-          (data?.choices?.[0]?.text) ||
-          (typeof data.result === 'string' && data.result) ||
-          (typeof data.response === 'string' && data.response) ||
-          (typeof data === 'string' && data) ||
-          rawBody;
-      } else {
-        replyText = rawBody;
-      }
-
-      replaceBubbleContent(typing.bubble, replyText || '...');
-    } catch (err) {
-      replaceBubbleContent(typing.bubble, `Error: ${err.message}`);
-      console.error(err);
-    }
-  });
-})();
+@media (max-width:600px){
+  .bubble{ max-width:100% }
+}
