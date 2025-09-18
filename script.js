@@ -4,14 +4,21 @@
   const messagesEl = document.getElementById('messages');
   const newChatBtn = document.getElementById('newChatBtn');
 
+  const authModal = document.getElementById('authModal');
+  const gsiContainer = document.getElementById('gsiContainer');
+  const authClose = document.getElementById('authClose');
+  const payModal = document.getElementById('payModal');
+  const payBtn = document.getElementById('payBtn');
+  const payClose = document.getElementById('payClose');
+
   const cfg = (window.REPCRAFTER_CONFIG || {});
   const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
+  const GOOGLE_CLIENT_ID = cfg.GOOGLE_CLIENT_ID;
 
   const params = new URLSearchParams(location.search);
-  const RAW_MODE = params.get('raw') === '1' || !!cfg.RAW_MODE;
   const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
 
-  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan?";
+  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
 
   function newSessionId() {
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
@@ -20,7 +27,7 @@
   }
   let sessionId = newSessionId();
 
-  // Force fresh state if page is restored from bfcache
+  // Ensure fresh state on bfcache
   window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 
   function timeNow() {
@@ -41,11 +48,8 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    if (text instanceof Element) {
-      bubble.appendChild(text);
-    } else {
-      bubble.textContent = String(text ?? '');
-    }
+    if (text instanceof Element) bubble.appendChild(text);
+    else bubble.textContent = String(text ?? '');
 
     content.appendChild(bubble);
 
@@ -58,12 +62,6 @@
 
     li.appendChild(avatar);
     li.appendChild(content);
-    return { li, bubble };
-  }
-
-  function appendMessage(role, text, opts={}) {
-    const { showMeta=true } = opts;
-    const { li, bubble } = makeMessageEl(role, text, showMeta);
     messagesEl.appendChild(li);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return { li, bubble };
@@ -73,7 +71,7 @@
     const dots = document.createElement('div');
     dots.className = 'typing';
     dots.innerHTML = '<span></span><span></span><span></span>';
-    return appendMessage('bot', dots);
+    return makeMessageEl('bot', dots);
   }
 
   function replaceBubbleContent(bubbleEl, newText) {
@@ -81,43 +79,147 @@
     bubbleEl.textContent = String(newText ?? '');
   }
 
-  // New chat button: fresh session + greet
+  // New chat
   function startNewChat() {
     sessionId = newSessionId();
     messagesEl.innerHTML = '';
     input.value = '';
-    appendMessage('bot', GREETING);
-    if (cfg.AUTOFOCUS !== false) input.focus();
+    makeMessageEl('bot', GREETING);
+    input.focus();
     if (DEBUG) console.debug('[chat] New session started:', sessionId);
   }
   if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
 
-  // Initial greeting on load
-  startNewChat();
-
-  // Auto-resize textarea
+  // Textarea auto-resize
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
-  // Enter-to-send: input handler (Shift+Enter = newline, IME-safe)
+  // Enter-to-send with IME-safe handling
   let composing = false;
   input.addEventListener('compositionstart', () => composing = true);
   input.addEventListener('compositionend', () => composing = false);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !composing) {
       e.preventDefault();
-      if (form) (form.requestSubmit ? form.requestSubmit() : form.submit());
+      form.requestSubmit ? form.requestSubmit() : form.submit();
     }
   });
 
+  // Auth & pay gating
+  let authed = false;
+  let paid = false;
+
+  function setComposerEnabled(enabled) {
+    input.disabled = !enabled;
+    form.querySelector('#sendBtn').disabled = !enabled;
+    input.placeholder = enabled
+      ? "Type your answer… (Enter to send, Shift+Enter for newline)"
+      : (authed ? "Please complete payment to continue…" : "Please sign in to continue…");
+  }
+
+  async function fetchMe() {
+    const res = await fetch('/api/me', { credentials: 'include' });
+    if (!res.ok) throw new Error('me failed');
+    return res.json();
+  }
+
+  function showAuthModal() { authModal.hidden = false; }
+  function hideAuthModal() { authModal.hidden = true; }
+  function showPayModal() { payModal.hidden = false; }
+  function hidePayModal() { payModal.hidden = true; }
+
+  // Initialize GSI button
+  window.onload = () => {
+    startNewChat();
+    initializeGSI();
+    gate();
+  };
+
+  function initializeGSI() {
+    if (!window.google || !GOOGLE_CLIENT_ID) return;
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: async (resp) => {
+        try {
+          const verify = await fetch('/api/auth/google-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ credential: resp.credential })
+          });
+          if (!verify.ok) throw new Error('auth verify failed');
+          hideAuthModal();
+          await gate();
+        } catch (e) {
+          console.error(e);
+          alert('Sign-in failed. Please try again.');
+        }
+      },
+      ux_mode: 'popup',
+      auto_select: false
+    });
+    gsiContainer.innerHTML = '';
+    google.accounts.id.renderButton(gsiContainer, { theme: 'outline', size: 'large', type: 'standard', shape: 'pill', text: 'continue_with', logo_alignment: 'left', width: 260 });
+  }
+
+  async function gate() {
+    try {
+      const me = await fetchMe();
+      authed = !!me.authenticated;
+      paid = !!me.paid;
+
+      if (!authed) {
+        setComposerEnabled(false);
+        showAuthModal();
+        return;
+      }
+      hideAuthModal();
+
+      if (!paid) {
+        setComposerEnabled(false);
+        showPayModal();
+        return;
+      }
+      hidePayModal();
+      setComposerEnabled(true);
+    } catch (e) {
+      console.error(e);
+      setComposerEnabled(false);
+      showAuthModal();
+    }
+  }
+
+  if (authClose) authClose.addEventListener('click', hideAuthModal);
+  if (payClose) payClose.addEventListener('click', hidePayModal);
+  if (payBtn) payBtn.addEventListener('click', async () => {
+    try {
+      const origin = location.origin;
+      const res = await fetch('/api/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnTo: origin }) });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Failed to start checkout');
+      location.href = data.url; // secure redirect to Stripe Checkout
+    } catch (e) {
+      console.error(e);
+      alert('Could not start checkout. Try again.');
+    }
+  });
+
+  // Handle paid=1 return
+  if (params.get('paid') === '1') {
+    (async () => { await gate(); })();
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!authed) { showAuthModal(); return; }
+    if (!paid) { showPayModal(); return; }
+
     const userText = (input.value || '').trim();
     if (!userText) return;
 
-    appendMessage('user', userText);
+    makeMessageEl('user', userText);
     input.value = '';
     input.style.height = '42px';
 
@@ -127,26 +229,16 @@
       const resp = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ chatInput: userText, sessionId })
       });
 
-      const status = resp.status;
       const contentType = resp.headers.get('content-type') || '';
       const rawBody = await resp.text();
-
-      if (DEBUG) {
-        console.debug('[chat] sessionId:', sessionId);
-        console.debug('[chat] upstream status:', status);
-        console.debug('[chat] upstream content-type:', contentType);
-        console.debug('[chat] upstream body (first 200):', (rawBody || '').slice(0, 200));
-      }
-
-      if (!resp.ok) throw new Error(`Webhook error ${status}: ${rawBody}`);
+      if (!resp.ok) throw new Error(`Webhook error ${resp.status}: ${rawBody}`);
 
       let replyText = '';
-      if (RAW_MODE) {
-        replyText = rawBody;
-      } else if (contentType.includes('application/json')) {
+      if (contentType.includes('application/json')) {
         let data;
         try { data = rawBody ? JSON.parse(rawBody) : {}; } catch { data = {}; }
         replyText =
