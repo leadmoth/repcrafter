@@ -19,7 +19,7 @@
   const params = new URLSearchParams(location.search);
   const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
 
-  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
+  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan?";
 
   function safeRandomHex(len) {
     try {
