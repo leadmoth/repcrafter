@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.N8N_SHARED_SECRET) headers['X-Shared-Secret'] = process.env.N8N_SHARED_SECRET;
 
-    // req.body is usually populated by Vercel for JSON requests, but fall back to manual parse if needed
+    // Parse incoming JSON
     let body = req.body;
     if (body == null) {
       const chunks = [];
@@ -24,10 +24,19 @@ export default async function handler(req, res) {
       body = raw ? JSON.parse(raw) : {};
     }
 
+    // Transform to Chat Trigger shape
+    const payload = {
+      chatInput: body.chatInput ?? body.message ?? '',
+      sessionId: body.sessionId ?? body.session_id ?? undefined,
+      // Pass through extras (only if your workflow uses them)
+      history: body.history,
+      metadata: body.metadata,
+    };
+
     const resp = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body || {}),
+      body: JSON.stringify(payload),
     });
 
     const text = await resp.text();
