@@ -1,10 +1,4 @@
-import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
-
-	createChat({
-		webhookUrl: 'https://leadmoth.app.n8n.cloud/webhook/c61d0fe0-7162-4a5b-95ac-fc8b789106af/chat'
-	});
-
-function () {
+(function () {
   const els = {
     messages: document.getElementById('messages'),
     form: document.getElementById('chatForm'),
@@ -22,12 +16,10 @@ function () {
   init();
 
   function init() {
-    // Render persisted history
     if (Array.isArray(state.history) && state.history.length) {
       for (const msg of state.history.slice(-50)) renderMessage(msg);
     }
 
-    // Intro message (always show if this is a new session or last message wasn't this intro)
     if (!state.history.length || !isIntro(state.history[0])) {
       const intro = {
         role: 'bot',
@@ -71,18 +63,17 @@ function () {
       state.pending = true;
       els.sendBtn.disabled = true;
 
-     // inside onSubmit(), replace the payload with:
-const payload = {
-  sessionId: state.sessionId,
-  chatInput: text,               // IMPORTANT: Chat Trigger expects this key
-  history: lastHistory(12),
-  metadata: {
-    source: 'repCrafter-web',
-    userAgent: navigator.userAgent,
-    locale: navigator.language || '',
-    page: location.href,
-  },
-};
+      // IMPORTANT: send chatInput for n8n Chat Trigger
+      const payload = {
+        sessionId: state.sessionId,
+        chatInput: text,
+        history: lastHistory(12),
+        metadata: {
+          source: 'repCrafter-web',
+          userAgent: navigator.userAgent,
+          locale: navigator.language || '',
+          page: location.href,
+        },
       };
 
       let replyText = '';
