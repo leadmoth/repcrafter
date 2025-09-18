@@ -24,11 +24,11 @@ export default async function handler(req, res) {
       body = raw ? JSON.parse(raw) : {};
     }
 
-    // Transform to Chat Trigger shape
+    // Transform for n8n Chat Trigger
     const payload = {
       chatInput: body.chatInput ?? body.message ?? '',
       sessionId: body.sessionId ?? body.session_id ?? undefined,
-      // Pass through extras (only if your workflow uses them)
+      // pass through extras if your workflow uses them
       history: body.history,
       metadata: body.metadata,
     };
