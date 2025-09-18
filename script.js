@@ -3,14 +3,14 @@
   const input = document.getElementById('userInput');
   const messagesEl = document.getElementById('messages');
   const newChatBtn = document.getElementById('newChatBtn');
-  const signOutBtn = document.getElementById('signOutBtn'); // Added for sign out
+  const signOutBtn = document.getElementById('signOutBtn');
+  const paySignOutBtn = document.getElementById('paySignOutBtn');
 
   const authModal = document.getElementById('authModal');
   const gsiContainer = document.getElementById('gsiContainer');
   const authClose = document.getElementById('authClose');
   const payModal = document.getElementById('payModal');
   const payBtn = document.getElementById('payBtn');
-  // payClose removed
 
   const cfg = (window.REPCRAFTER_CONFIG || {});
   const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
@@ -106,18 +106,18 @@
     startNewChat();
   });
 
-  if (signOutBtn) {
-    signOutBtn.addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        location.reload();
-      } catch (e) {
-        console.error('Sign out failed:', e);
-        alert('Could not sign out. Please try again.');
-      }
-    });
+  async function signOut() {
+    try {
+      const res = await fetch('/api/logout', { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      location.reload();
+    } catch (e) {
+      console.error('Sign out failed:', e);
+      alert('Could not sign out. Please try again.');
+    }
   }
+  if (signOutBtn) signOutBtn.addEventListener('click', signOut);
+  if (paySignOutBtn) paySignOutBtn.addEventListener('click', signOut);
 
   input?.addEventListener('input', () => {
     input.style.height = 'auto';
@@ -235,7 +235,6 @@
   }
 
   authClose?.addEventListener('click', hideAuthModal);
-  // payClose removed; pay modal can't be dismissed
 
   payBtn?.addEventListener('click', async () => {
     try {
