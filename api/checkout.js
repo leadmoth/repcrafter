@@ -1,7 +1,7 @@
 // Creates a Stripe Checkout Session that automatically matches mode to the price type.
 // - If STRIPE_PRICE_ID is a recurring price -> mode: 'subscription'.
 // - If STRIPE_PRICE_ID is a one-time price -> mode: 'payment'.
-// - If no price is configured, falls back to inline one-time price_data.
+// - If no price is configured, defaults to a $2.99/month subscription.
 // Optional: you can pass { priceId } or { interval: 'month'|'year', returnTo } in the POST body.
 
 const { parseCookies } = require('./_lib/cookies');
@@ -41,7 +41,7 @@ module.exports = async (req, res) => {
     const success_url = `${returnTo}?paid=1`;
     const cancel_url = returnTo;
 
-    // Extract user from session
+    // Extract user from session (prefill email / bind to customer)
     let customer_email;
     let stripe_customer_id;
     let user_id; // e.g., Google sub
@@ -56,12 +56,12 @@ module.exports = async (req, res) => {
       }
     } catch {}
 
-    // Determine line items and mode
+    // Determine line items and mode: default to $2.99/month subscription
     const envPriceId = process.env.STRIPE_PRICE_ID;
     const reqPriceId = body?.priceId;
     const priceId = envPriceId || reqPriceId;
 
-    let mode = 'payment';
+    let mode = 'subscription';
     let line_items;
 
     if (priceId) {
@@ -73,30 +73,18 @@ module.exports = async (req, res) => {
       mode = price.type === 'recurring' ? 'subscription' : 'payment';
       line_items = [{ price: price.id, quantity: 1 }];
     } else {
-      // Fallback inline price: one-time by default, or subscription if an interval is provided
-      const interval = body?.interval; // 'month' | 'year'
-      if (interval === 'month' || interval === 'year') {
-        mode = 'subscription';
-        line_items = [{
-          price_data: {
-            currency: 'usd',
-            unit_amount: 199, // $1.99
-            product_data: { name: 'REPCRAFTER Access' },
-            recurring: { interval }
-          },
-          quantity: 1
-        }];
-      } else {
-        mode = 'payment';
-        line_items = [{
-          price_data: {
-            currency: 'usd',
-            unit_amount: 199, // $1.99
-            product_data: { name: 'REPCRAFTER Access' }
-          },
-          quantity: 1
-        }];
-      }
+      // Default: $2.99/month subscription
+      const interval = body?.interval || 'month';
+      mode = 'subscription';
+      line_items = [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: 299, // $2.99
+          product_data: { name: 'REPCRAFTER Access' },
+          recurring: { interval } // 'month' by default
+        },
+        quantity: 1
+      }];
     }
 
     const params = {
@@ -108,18 +96,15 @@ module.exports = async (req, res) => {
       billing_address_collection: 'auto'
     };
 
-    // Prefer binding to known Customer; fall back to email
+    // Prefer binding to known Customer; fall back to email prefill
     if (stripe_customer_id) {
       params.customer = stripe_customer_id;
-      // For guest checkouts (no saved payment methods), optionally:
       // params.customer_creation = 'if_required';
     } else if (customer_email) {
       params.customer_email = customer_email;
-      // Optionally create a Customer automatically when needed:
       // params.customer_creation = 'if_required';
     }
 
-    // Helpful for mapping sessions back to your user in logs/webhooks
     if (user_id) params.client_reference_id = user_id;
 
     const session = await stripe.checkout.sessions.create(params);
