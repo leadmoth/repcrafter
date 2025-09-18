@@ -51,11 +51,11 @@ body{
   flex:1;
   display:flex;
   flex-direction:column;
-  gap:10px;           /* tightened to remove visual artifact */
+  gap:10px;
   padding:10px 12px 12px;
   max-width:900px; width:100%;
   margin:0 auto;
-  min-height:0;       /* allow children to overflow correctly */
+  min-height:0;
 }
 
 .messages{
@@ -63,6 +63,7 @@ body{
   display:flex; flex-direction:column; gap:12px;
   overflow:auto; scroll-behavior:smooth;
   flex:1; min-height:0;
+  padding-bottom:10px;
 }
 
 /* Message layout with avatars */
@@ -96,10 +97,12 @@ body{
   white-space:pre-wrap;
   overflow-wrap:break-word;
   background:var(--bubble-bot);
+  color:var(--text);
 }
 .message.user .bubble{
   background:var(--bubble-user);
   border-radius:14px 14px 6px 14px;
+  color:var(--text);
 }
 
 .meta{ font-size:12px; color:var(--muted); margin-top:0 }
@@ -110,10 +113,7 @@ body{
   display:flex; gap:10px; padding:10px; background:var(--panel);
   border:1px solid var(--border); border-radius:12px;
   align-items:flex-end;
-  box-shadow: 0 -6px 20px rgba(0,0,0,.25); /* smooth transition, hides any line artifact */
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
-.composer .left-tools{ display:flex; align-items:center; gap:6px }
 .composer textarea{
   flex:1; resize:none; min-height:42px; max-height:160px;
   padding:10px 12px; border-radius:8px; border:1px solid var(--border);
@@ -121,28 +121,6 @@ body{
 }
 .composer textarea:focus{ box-shadow:var(--ring); border-color:#2a2f3a }
 
-/* Emoji toggle and panel */
-.emoji-toggle{
-  width:36px; height:36px; border-radius:8px; border:1px solid var(--border);
-  background:#0e121a; color:#fff; cursor:pointer;
-}
-.emoji-toggle:hover{ background:#111827 }
-
-.emoji-panel{
-  position:absolute; bottom:58px; left:10px;
-  display:grid; grid-template-columns: repeat(8, 28px); gap:6px;
-  background:#0e121a; border:1px solid var(--border); border-radius:10px;
-  padding:8px; box-shadow: 0 10px 30px rgba(0,0,0,.35);
-  max-width: 320px; z-index:10;
-}
-.emoji-panel[hidden]{ display:none }
-.emoji-panel button{
-  width:28px; height:28px; border-radius:6px; border:1px solid transparent;
-  background:transparent; cursor:pointer; font-size:18px; line-height:1;
-}
-.emoji-panel button:hover{ background:#141927; border-color:#222635 }
-
-/* Typing indicator bubble */
 .typing{ display:inline-flex; align-items:center; gap:6px }
 .typing span{
   display:inline-block; width:6px; height:6px; background:#9fb6ff; border-radius:50%;
