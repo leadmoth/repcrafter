@@ -67,7 +67,10 @@ body{
 }
 
 /* Message layout with avatars */
-.message{ display:flex; gap:10px; align-items:flex-start }
+.message{
+  display:flex; gap:10px; align-items:flex-start;
+  width:100%;
+}
 .message.user{ flex-direction:row-reverse }
 
 .avatar{
@@ -84,6 +87,8 @@ body{
 .message .content{
   display:flex; flex-direction:column; align-items:flex-start; gap:6px;
   max-width:100%;
+  flex:1 1 auto;          /* Allow the content to take remaining width */
+  min-width:0;            /* Prevent unintended min-content sizing */
 }
 .message.user .content{ align-items:flex-end }
 
@@ -95,7 +100,9 @@ body{
   border-radius:14px 14px 14px 6px;
   max-width:min(96%, 80ch);
   white-space:pre-wrap;
-  overflow-wrap:break-word;
+  overflow-wrap:break-word; /* break long words only if necessary */
+  word-break:normal;        /* avoid breaking inside words */
+  hyphens:none;             /* no auto hyphenation */
   background:var(--bubble-bot);
   color:var(--text);
 }
