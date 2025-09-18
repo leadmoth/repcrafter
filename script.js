@@ -11,7 +11,7 @@
   const RAW_MODE = params.get('raw') === '1' || !!cfg.RAW_MODE;
   const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
 
-  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
+  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan?";
 
   function newSessionId() {
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
