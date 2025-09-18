@@ -65,16 +65,18 @@
       state.pending = true;
       els.sendBtn.disabled = true;
 
-      const payload = {
-        sessionId: state.sessionId,
-        message: text,
-        history: lastHistory(12),
-        metadata: {
-          source: 'repCrafter-web',
-          userAgent: navigator.userAgent,
-          locale: navigator.language || '',
-          page: location.href,
-        },
+     // inside onSubmit(), replace the payload with:
+const payload = {
+  sessionId: state.sessionId,
+  chatInput: text,               // IMPORTANT: Chat Trigger expects this key
+  history: lastHistory(12),
+  metadata: {
+    source: 'repCrafter-web',
+    userAgent: navigator.userAgent,
+    locale: navigator.language || '',
+    page: location.href,
+  },
+};
       };
 
       let replyText = '';
