@@ -105,14 +105,12 @@ module.exports = async (req, res) => {
       userPresent: Boolean(user && (user.id || user.email))
     });
 
-    // Call n8n (using Node's http/https to avoid any global fetch/runtime issues)
     const resp = await fetchJsonWithNode(n8nUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
     });
 
-    // Log non-2xx for diagnostics
     if (resp.status < 200 || resp.status >= 300) {
       console.warn('[api/chat] n8n responded non-2xx', { status: resp.status, len: resp.text?.length });
       return res.status(502).json({
@@ -122,7 +120,6 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Try JSON first
     try {
       const json = JSON.parse(resp.text || '{}');
       return res.status(200).json(json);
