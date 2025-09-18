@@ -12,16 +12,16 @@ export default async function handler(req, res) {
   if (!target) return res.status(500).json({ error: 'Missing N8N_WEBHOOK_URL' });
 
   try {
-    // Read JSON body robustly (Next/Vercel or plain Node)
+    // Read JSON body robustly
     let body = req.body;
     if (body == null || typeof body !== 'object') {
-      const bufs = [];
-      for await (const chunk of req) bufs.push(chunk);
-      const raw = Buffer.concat(bufs).toString();
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks).toString();
       body = raw ? JSON.parse(raw) : {};
     }
 
-    // Send both camelCase and snake_case for n8n memory nodes
+    // Send both camelCase and snake_case to satisfy n8n memory nodes
     const payload = {
       chatInput: body.chatInput ?? body.prompt ?? body.text ?? '',
       prompt: body.prompt ?? body.chatInput ?? body.text ?? '',
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     const upstreamCT = upstream.headers.get('content-type') || 'text/plain; charset=utf-8';
     const text = await upstream.text();
 
-    // Passthrough: same status, same content-type, exact body
+    // Passthrough exact response
     res.status(upstream.status);
     res.setHeader('Content-Type', upstreamCT);
     return res.send(text);
