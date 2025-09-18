@@ -1,0 +1,9 @@
+{
+  "name": "repcrafter",
+  "private": true,
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "stripe": "^16.0.0"
+  }
+}
