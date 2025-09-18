@@ -20,12 +20,24 @@
 
   const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
 
-  function newSessionId() {
-    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-    );
+  // Safe UUID-ish generator with fallback (won't crash if crypto is missing)
+  function safeRandomHex(len) {
+    try {
+      if (window.crypto?.getRandomValues) {
+        const arr = new Uint8Array(Math.ceil(len / 2));
+        window.crypto.getRandomValues(arr);
+        return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, len);
+      }
+    } catch {}
+    // Fallback
+    let out = '';
+    while (out.length < len) out += Math.floor(Math.random() * 16).toString(16);
+    return out.slice(0, len);
   }
-  let sessionId = newSessionId();
+  function newSessionId() {
+    return `${safeRandomHex(8)}-${safeRandomHex(4)}-${safeRandomHex(4)}-${safeRandomHex(4)}-${safeRandomHex(12)}`;
+  }
+  let sessionId = null; // set after load
 
   // Ensure fresh state on bfcache
   window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
@@ -81,26 +93,33 @@
 
   // New chat
   function startNewChat() {
-    sessionId = newSessionId();
-    messagesEl.innerHTML = '';
-    input.value = '';
-    makeMessageEl('bot', GREETING);
-    input.focus();
-    if (DEBUG) console.debug('[chat] New session started:', sessionId);
+    try {
+      if (!sessionId) sessionId = newSessionId();
+      messagesEl.innerHTML = '';
+      input.value = '';
+      makeMessageEl('bot', GREETING);
+      input.focus();
+      if (DEBUG) console.debug('[chat] New session started:', sessionId);
+    } catch (e) {
+      console.error('[startNewChat] failed:', e);
+    }
   }
-  if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
+  if (newChatBtn) newChatBtn.addEventListener('click', () => {
+    sessionId = newSessionId();
+    startNewChat();
+  });
 
   // Textarea auto-resize
-  input.addEventListener('input', () => {
+  input?.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
   // Enter-to-send with IME-safe handling
   let composing = false;
-  input.addEventListener('compositionstart', () => composing = true);
-  input.addEventListener('compositionend', () => composing = false);
-  input.addEventListener('keydown', (e) => {
+  input?.addEventListener('compositionstart', () => composing = true);
+  input?.addEventListener('compositionend', () => composing = false);
+  input?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !composing) {
       e.preventDefault();
       form.requestSubmit ? form.requestSubmit() : form.submit();
@@ -112,11 +131,18 @@
   let paid = false;
 
   function setComposerEnabled(enabled) {
-    input.disabled = !enabled;
-    form.querySelector('#sendBtn').disabled = !enabled;
-    input.placeholder = enabled
-      ? "Type your answer… (Enter to send, Shift+Enter for newline)"
-      : (authed ? "Please complete payment to continue…" : "Please sign in to continue…");
+    try {
+      if (input) input.disabled = !enabled;
+      const sendBtn = form?.querySelector('#sendBtn');
+      if (sendBtn) sendBtn.disabled = !enabled;
+      if (input) {
+        input.placeholder = enabled
+          ? "Type your answer… (Enter to send, Shift+Enter for newline)"
+          : (authed ? "Please complete payment to continue…" : "Please sign in to continue…");
+      }
+    } catch (e) {
+      console.error('[setComposerEnabled] failed:', e);
+    }
   }
 
   async function fetchMe() {
@@ -125,79 +151,58 @@
     return res.json();
   }
 
-  function showAuthModal() { authModal.hidden = false; }
-  function hideAuthModal() { authModal.hidden = true; }
-  function showPayModal() { payModal.hidden = false; }
-  function hidePayModal() { payModal.hidden = true; }
+  function showAuthModal() { if (authModal) authModal.hidden = false; }
+  function hideAuthModal() { if (authModal) authModal.hidden = true; }
+  function showPayModal() { if (payModal) payModal.hidden = false; }
+  function hidePayModal() { if (payModal) payModal.hidden = true; }
 
-  // Initialize GSI button
-  window.onload = () => {
-    startNewChat();
-    initializeGSI();
-    gate();
-  };
-
- // Only the Google callback block changed below to surface server error details.
-// Find the initializeGSI() function and replace the callback with this block:
-
-// ...
-google.accounts.id.initialize({
-  client_id: GOOGLE_CLIENT_ID,
-  callback: async (resp) => {
+  function initializeGSI() {
     try {
-      const verify = await fetch('/api/auth/google-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ credential: resp.credential })
+      if (!window.google || !GOOGLE_CLIENT_ID) return;
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (resp) => {
+          try {
+            const verify = await fetch('/api/auth/google-verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ credential: resp.credential })
+            });
+            const data = await verify.json().catch(() => ({}));
+            if (!verify.ok) {
+              const reason = data && (data.detail || data.error) ? `${data.error}: ${data.detail || ''}` : 'auth verify failed';
+              throw new Error(reason);
+            }
+            hideAuthModal();
+            await gate();
+          } catch (e) {
+            console.error(e);
+            alert(`Sign-in failed: ${e.message}`);
+          }
+        },
+        ux_mode: 'popup',
+        auto_select: false
       });
-      const data = await verify.json().catch(() => ({}));
-      if (!verify.ok) {
-        const reason = data && (data.detail || data.error) ? `${data.error}: ${data.detail || ''}` : 'auth verify failed';
-        throw new Error(reason);
+      if (gsiContainer) {
+        gsiContainer.innerHTML = '';
+        google.accounts.id.renderButton(gsiContainer, { theme: 'outline', size: 'large', type: 'standard', shape: 'pill', text: 'continue_with', logo_alignment: 'left', width: 260 });
       }
-      hideAuthModal();
-      await gate();
     } catch (e) {
-      console.error(e);
-      alert(`Sign-in failed: ${e.message}`);
+      console.error('[initializeGSI] failed:', e);
     }
-  },
-  ux_mode: 'popup',
-  auto_select: false
-});
-// ...
-     
-      
-      // ... inside initializeGSI(), keep config but replace the callback block with:
-callback: async (resp) => {
-  try {
-    const verify = await fetch('/api/auth/google-verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ credential: resp.credential })
-    });
-    const data = await verify.json().catch(() => ({}));
-    if (!verify.ok) {
-      throw new Error(data && data.detail ? data.detail : 'auth verify failed');
-    }
-    hideAuthModal();
-    await gate();
-  } catch (e) {
-    console.error(e);
-    alert(`Sign-in failed: ${e.message}`);
-  }
-},
-      ux_mode: 'popup',
-      auto_select: false
-    });
-    gsiContainer.innerHTML = '';
-    google.accounts.id.renderButton(gsiContainer, { theme: 'outline', size: 'large', type: 'standard', shape: 'pill', text: 'continue_with', logo_alignment: 'left', width: 260 });
   }
 
   async function gate() {
     try {
+      // TEMP bypass to recover UI quickly
+      if (cfg.BYPASS_AUTH === true || cfg.REQUIRE_AUTH === false) {
+        authed = true; paid = true;
+        hideAuthModal(); hidePayModal();
+        setComposerEnabled(true);
+        return;
+      }
+
       const me = await fetchMe();
       authed = !!me.authenticated;
       paid = !!me.paid;
@@ -217,15 +222,16 @@ callback: async (resp) => {
       hidePayModal();
       setComposerEnabled(true);
     } catch (e) {
-      console.error(e);
+      console.error('[gate] failed:', e);
+      // Don’t crash the UI; keep composer disabled but keep greeting visible
       setComposerEnabled(false);
-      showAuthModal();
+      if (cfg.REQUIRE_AUTH !== false) showAuthModal();
     }
   }
 
-  if (authClose) authClose.addEventListener('click', hideAuthModal);
-  if (payClose) payClose.addEventListener('click', hidePayModal);
-  if (payBtn) payBtn.addEventListener('click', async () => {
+  authClose?.addEventListener('click', hideAuthModal);
+  payClose?.addEventListener('click', hidePayModal);
+  payBtn?.addEventListener('click', async () => {
     try {
       const origin = location.origin;
       const res = await fetch('/api/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnTo: origin }) });
@@ -243,7 +249,7 @@ callback: async (resp) => {
     (async () => { await gate(); })();
   }
 
-  form.addEventListener('submit', async (e) => {
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!authed) { showAuthModal(); return; }
     if (!paid) { showPayModal(); return; }
@@ -262,7 +268,7 @@ callback: async (resp) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ chatInput: userText, sessionId })
+        body: JSON.stringify({ chatInput: userText, sessionId: sessionId || (sessionId = newSessionId()) })
       });
 
       const contentType = resp.headers.get('content-type') || '';
@@ -294,6 +300,20 @@ callback: async (resp) => {
     } catch (err) {
       replaceBubbleContent(typing.bubble, `Error: ${err.message}`);
       console.error(err);
+    }
+  });
+
+  // Initialize AFTER DOM is ready
+  window.addEventListener('load', () => {
+    try {
+      sessionId = newSessionId();
+      startNewChat();
+      initializeGSI();
+      gate();
+    } catch (e) {
+      console.error('[load init] failed:', e);
+      // At least show the greeting so the UI isn’t blank
+      try { startNewChat(); } catch {}
     }
   });
 })();
