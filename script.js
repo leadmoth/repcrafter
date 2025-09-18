@@ -3,31 +3,17 @@
   const input = document.getElementById('userInput');
   const messagesEl = document.getElementById('messages');
   const newChatBtn = document.getElementById('newChatBtn');
+  const emojiToggle = document.getElementById('emojiToggle');
+  const emojiPanel = document.getElementById('emojiPanel');
 
   const cfg = (window.REPCRAFTER_CONFIG || {});
   const WEBHOOK_URL = cfg.WEBHOOK_URL || '/api/chat';
 
-  // Enable "show exactly what the server returned" with either:
-  // - URL param ?raw=1
-  // - window.REPCRAFTER_CONFIG.RAW_MODE = true
   const params = new URLSearchParams(location.search);
   const RAW_MODE = params.get('raw') === '1' || !!cfg.RAW_MODE;
-
-  // Extra console logging when ?debug=1 or config.DEBUG = true
   const DEBUG = params.get('debug') === '1' || !!cfg.DEBUG;
 
-  function appendMessage(role, text) {
-    const li = document.createElement('li');
-    li.className = `msg msg-${role}`;
-    li.textContent = String(text ?? '');
-    messagesEl.appendChild(li);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function truncate(s, n) {
-    if (typeof s !== 'string') s = String(s ?? '');
-    return s.length > n ? s.slice(0, n - 1) + '…' : s;
-  }
+  const GREETING = "Hey there! 👋 I’m REPCRAFTER. Ready to craft your workout plan? Tell me your goal to get started.";
 
   function newSessionId() {
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
@@ -36,17 +22,129 @@
   }
   let sessionId = newSessionId();
 
-  // New chat button: wipe UI and start a fresh session
-  if (newChatBtn) {
-    newChatBtn.addEventListener('click', () => {
-      sessionId = newSessionId();
-      messagesEl.innerHTML = '';
-      input.value = '';
-      if (DEBUG) console.debug('[chat] New session started:', sessionId);
-      // Optional: show a small confirmation bubble
-      appendMessage('bot', 'New chat started. How can I help?');
+  // Force fresh state if page is restored from bfcache
+  window.addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
+  function timeNow() {
+    try { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
+  }
+
+  function makeMessageEl(role, text, showMeta=true) {
+    const li = document.createElement('li');
+    li.className = `message ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.textContent = role === 'user' ? '🧑' : '🤖';
+
+    const content = document.createElement('div');
+    content.className = 'content';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (text instanceof Element) {
+      bubble.appendChild(text);
+    } else {
+      bubble.textContent = String(text ?? '');
+    }
+
+    content.appendChild(bubble);
+
+    if (showMeta) {
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = timeNow();
+      content.appendChild(meta);
+    }
+
+    li.appendChild(avatar);
+    li.appendChild(content);
+    return { li, bubble };
+  }
+
+  function appendMessage(role, text, opts={}) {
+    const { showMeta=true } = opts;
+    const { li, bubble } = makeMessageEl(role, text, showMeta);
+    messagesEl.appendChild(li);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return { li, bubble };
+  }
+
+  function showTyping() {
+    const dots = document.createElement('div');
+    dots.className = 'typing';
+    dots.innerHTML = '<span></span><span></span><span></span>';
+    const { li, bubble } = appendMessage('bot', dots);
+    return { li, bubble };
+  }
+
+  function replaceBubbleContent(bubbleEl, newText) {
+    if (!bubbleEl) return;
+    // Clear and set plain text
+    bubbleEl.textContent = String(newText ?? '');
+  }
+
+  // Emoji picker
+  const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🤔','🙌','👍','🔥','💪','🏃‍♂️','🏋️‍♂️','🧘','🥗','🍎','⏱️','✅','⭐','💡','📅','📈','📝','🎯','🧠','⚡','🏆','👏','🤝','🚀'];
+  function renderEmojiPanel() {
+    emojiPanel.innerHTML = '';
+    EMOJIS.forEach(e => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = e;
+      btn.addEventListener('click', () => {
+        insertAtCursor(input, e);
+        input.focus();
+      });
+      emojiPanel.appendChild(btn);
     });
   }
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const value = textarea.value;
+    textarea.value = value.slice(0, start) + text + value.slice(end);
+    const pos = start + text.length;
+    textarea.selectionStart = textarea.selectionEnd = pos;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function toggleEmojiPanel(show) {
+    if (show === true) emojiPanel.hidden = false;
+    else if (show === false) emojiPanel.hidden = true;
+    else emojiPanel.hidden = !emojiPanel.hidden;
+  }
+  if (emojiToggle && emojiPanel) {
+    renderEmojiPanel();
+    emojiToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleEmojiPanel();
+    });
+    document.addEventListener('click', (e) => {
+      if (!emojiPanel.hidden && !emojiPanel.contains(e.target) && e.target !== emojiToggle) {
+        toggleEmojiPanel(false);
+      }
+    });
+  }
+
+  // New chat button: fresh session + greet
+  function startNewChat() {
+    sessionId = newSessionId();
+    messagesEl.innerHTML = '';
+    input.value = '';
+    appendMessage('bot', GREETING);
+    if (DEBUG) console.debug('[chat] New session started:', sessionId);
+  }
+  if (newChatBtn) newChatBtn.addEventListener('click', startNewChat);
+
+  // Initial greeting on load
+  startNewChat();
+
+  // Auto-resize textarea
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -55,7 +153,10 @@
 
     appendMessage('user', userText);
     input.value = '';
-    appendMessage('bot', '…');
+    input.style.height = '42px';
+    toggleEmojiPanel(false);
+
+    const typing = showTyping();
 
     try {
       const resp = await fetch(WEBHOOK_URL, {
@@ -66,22 +167,21 @@
 
       const status = resp.status;
       const contentType = resp.headers.get('content-type') || '';
-      const rawBody = await resp.text(); // read once, parse from this if needed
+      const rawBody = await resp.text();
 
       if (DEBUG) {
+        console.debug('[chat] sessionId:', sessionId);
         console.debug('[chat] upstream status:', status);
         console.debug('[chat] upstream content-type:', contentType);
-        console.debug('[chat] upstream body (first 200):', truncate(rawBody, 200));
+        console.debug('[chat] upstream body (first 200):', (rawBody || '').slice(0, 200));
       }
 
       if (!resp.ok) {
-        throw new Error(`Webhook error ${status}: ${truncate(rawBody, 240)}`);
+        throw new Error(`Webhook error ${status}: ${rawBody}`);
       }
 
       let replyText = '';
-
       if (RAW_MODE) {
-        // Show exactly what the server sent (JSON string or plain text)
         replyText = rawBody;
       } else if (contentType.includes('application/json')) {
         let data;
@@ -98,17 +198,14 @@
           (typeof data.result === 'string' && data.result) ||
           (typeof data.response === 'string' && data.response) ||
           (typeof data === 'string' && data) ||
-          rawBody; // fallback: show raw JSON string
+          rawBody;
       } else {
-        // Non-JSON: show as-is
         replyText = rawBody;
       }
 
-      const lastBot = messagesEl.querySelector('li.msg-bot:last-of-type');
-      if (lastBot) lastBot.textContent = replyText || '...';
+      replaceBubbleContent(typing.bubble, replyText || '...');
     } catch (err) {
-      const lastBot = messagesEl.querySelector('li.msg-bot:last-of-type');
-      if (lastBot) lastBot.textContent = `Error: ${err.message}`;
+      replaceBubbleContent(typing.bubble, `Error: ${err.message}`);
       console.error(err);
     }
   });
