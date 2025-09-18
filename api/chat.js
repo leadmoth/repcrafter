@@ -3,13 +3,23 @@ export default async function handler(req, res) {
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shared-Secret');
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const target = process.env.N8N_WEBHOOK_URL;
-  if (!target) return res.status(500).json({ error: 'Missing N8N_WEBHOOK_URL' });
+  const target = process.env.N8N_WEBHOOK_URL || '';
+
+  // Debug helper to confirm which upstream URL is configured
+  if (req.method === 'GET' && req.query?.debug === '1') {
+    return res.status(200).json({ using: target || '(missing N8N_WEBHOOK_URL)' });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (!target) {
+    return res.status(500).json({ error: 'Missing N8N_WEBHOOK_URL' });
+  }
 
   try {
     // Read JSON body robustly
@@ -21,7 +31,7 @@ export default async function handler(req, res) {
       body = raw ? JSON.parse(raw) : {};
     }
 
-    // Send both camelCase and snake_case to satisfy n8n memory nodes
+    // Send both camelCase and snake_case for n8n memory nodes
     const payload = {
       chatInput: body.chatInput ?? body.prompt ?? body.text ?? '',
       prompt: body.prompt ?? body.chatInput ?? body.text ?? '',
@@ -40,10 +50,10 @@ export default async function handler(req, res) {
       body: JSON.stringify(payload),
     });
 
+    // Passthrough: same status, same content-type, exact body
     const upstreamCT = upstream.headers.get('content-type') || 'text/plain; charset=utf-8';
     const text = await upstream.text();
 
-    // Passthrough exact response
     res.status(upstream.status);
     res.setHeader('Content-Type', upstreamCT);
     return res.send(text);
