@@ -15,34 +15,39 @@ export default async function handler(req, res) {
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.N8N_SHARED_SECRET) headers['X-Shared-Secret'] = process.env.N8N_SHARED_SECRET;
 
-    // Parse incoming JSON
+    // Parse incoming JSON robustly (Next/Vercel body can be pre-parsed or stream)
     let body = req.body;
-    if (body == null) {
+    if (body == null || typeof body !== 'object') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const raw = Buffer.concat(chunks).toString();
       body = raw ? JSON.parse(raw) : {};
     }
 
-    // Transform for n8n Chat Trigger
+    // Normalize for n8n consumers
+    const chatInput = body.chatInput ?? body.message ?? body.text ?? body.prompt ?? '';
     const payload = {
-      chatInput: body.chatInput ?? body.message ?? '',
+      chatInput,
+      // Duplicate for nodes that expect "prompt"
+      prompt: body.prompt ?? chatInput,
       sessionId: body.sessionId ?? body.session_id ?? undefined,
       history: body.history,
       metadata: body.metadata,
     };
 
-    const resp = await fetch(url, {
+    const upstream = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
     });
 
-    const contentType = resp.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    const upstreamCT = upstream.headers.get('content-type') || '';
+    let replyText = '';
+
+    if (upstreamCT.includes('application/json')) {
       let data = null;
-      try { data = await resp.json(); } catch {}
-      const reply =
+      try { data = await upstream.json(); } catch {}
+      replyText =
         (data && (
           (typeof data.reply === 'string' && data.reply) ||
           (Array.isArray(data.messages) && data.messages.map(m => m?.text ?? m).filter(Boolean).join('\n')) ||
@@ -55,16 +60,15 @@ export default async function handler(req, res) {
           (typeof data.result === 'string' && data.result) ||
           (typeof data.response === 'string' && data.response)
         )) || '';
-
-      res.status(resp.status);
-      res.setHeader('Content-Type', 'application/json');
-      return res.send(JSON.stringify({ reply: reply || 'OK' }));
     } else {
-      const text = await resp.text();
-      res.status(resp.status);
-      res.setHeader('Content-Type', 'text/plain');
-      return res.send(text || 'OK');
+      // Plain text or anything else
+      try { replyText = await upstream.text(); } catch { replyText = ''; }
     }
+
+    // Always normalize back to JSON for the browser
+    res.status(upstream.status);
+    res.setHeader('Content-Type', 'application/json');
+    return res.send(JSON.stringify({ reply: replyText || '...' }));
   } catch (e) {
     console.error('Proxy error:', e);
     return res.status(500).json({ error: 'Proxy error' });
