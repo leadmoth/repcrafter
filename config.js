@@ -1,5 +1,4 @@
-// Barebones config: the frontend will POST to this URL.
-// Default is the Vercel serverless proxy; set N8N_WEBHOOK_URL in Vercel.
 window.REPCRAFTER_CONFIG = {
-  WEBHOOK_URL: "/api/chat"
+  // Replace with your Webhook Trigger PRODUCTION URL (not Chat Trigger, not Test URL)
+  WEBHOOK_URL: "https://leadmoth.app.n8n.cloud/webhook/eaea9f51-f0b8-4557-be8c-faf844fb9051"
 };
