@@ -1,4 +1,10 @@
-(function () {
+import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+
+	createChat({
+		webhookUrl: 'https://leadmoth.app.n8n.cloud/webhook/c61d0fe0-7162-4a5b-95ac-fc8b789106af/chat'
+	});
+
+function () {
   const els = {
     messages: document.getElementById('messages'),
     form: document.getElementById('chatForm'),
