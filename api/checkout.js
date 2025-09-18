@@ -1,7 +1,11 @@
-// Creates a Stripe Checkout Session using a configured Price ID or inline price_data.
-// Returns { url } on success or a JSON error with details on failure.
+// Creates a Stripe Checkout Session that automatically matches mode to the price type.
+// - If STRIPE_PRICE_ID is a recurring price -> mode: 'subscription'.
+// - If STRIPE_PRICE_ID is a one-time price -> mode: 'payment'.
+// - If no price is configured, falls back to inline one-time price_data.
+// Optional: you can pass { priceId } or { interval: 'month'|'year' } in the POST body.
 
 const { parseCookies } = require('./_lib/cookies');
+const { verify } = require('./_lib/jwt');
 
 function readJsonBody(req) {
   return new Promise((resolve) => {
@@ -9,72 +13,97 @@ function readJsonBody(req) {
     let raw = '';
     req.on('data', (c) => (raw += c));
     req.on('end', () => {
-      try { resolve(raw ? JSON.parse(raw) : {}); }
-      catch { resolve({}); }
+      try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); }
     });
   });
 }
 
-function absoluteOrigin(req, fallback) {
-  const xfProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
-  const proto = xfProto || 'https';
+function absoluteOrigin(req) {
+  const proto = (req.headers['x-forwarded-proto'] || 'https').toString().split(',')[0].trim();
   const host = req.headers.host || '';
-  return fallback || `${proto}://${host}`;
+  return `${proto}://${host}`;
 }
 
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).end();
 
-    // Require Stripe SDK and key
+    // Load Stripe
     let Stripe;
     try { Stripe = require('stripe'); }
-    catch {
-      return res.status(500).json({ error: 'server_misconfigured', detail: "Stripe SDK not installed. Add 'stripe' to dependencies." });
-    }
+    catch { return res.status(500).json({ error: 'server_misconfigured', detail: "Stripe SDK not installed. Add 'stripe' to dependencies." }); }
     const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) {
-      return res.status(500).json({ error: 'server_misconfigured', detail: 'STRIPE_SECRET_KEY missing' });
-    }
-    const stripe = Stripe(stripeKey);
+    if (!stripeKey) return res.status(500).json({ error: 'server_misconfigured', detail: 'STRIPE_SECRET_KEY missing' });
+    const stripe = Stripe(stripeKey, { apiVersion: '2024-06-20' });
 
     const body = await readJsonBody(req);
-    const returnTo = (body && body.returnTo) || absoluteOrigin(req);
+    const returnTo = body?.returnTo || absoluteOrigin(req);
     const success_url = `${returnTo}?paid=1`;
     const cancel_url = returnTo;
 
-    // Optional: attach the email from your session cookie so Stripe can prefill
-    let customer_email = undefined;
+    // Optional: extract email from your session cookie for Stripe prefill
+    let customer_email;
     try {
       const cookies = parseCookies(req.headers.cookie || '');
-      // If you store email in JWT, you could decode it here. For now we rely on client providing it later or Stripe Google Pay.
-      // customer_email = decoded.email;
-      // Keeping undefined is fine; Stripe will ask for email on Checkout.
+      const token = cookies.session;
+      if (token && process.env.SESSION_SECRET) {
+        const payload = verify(token, process.env.SESSION_SECRET);
+        if (payload?.email) customer_email = payload.email;
+      }
     } catch {}
 
-    // Prefer a pre-created Price ID; fallback to inline price_data if not set
-    const priceId = process.env.STRIPE_PRICE_ID || body?.priceId;
-    const line_items = priceId
-      ? [{ price: priceId, quantity: 1 }]
-      : [{
+    const envPriceId = process.env.STRIPE_PRICE_ID;
+    const reqPriceId = body?.priceId;
+    const priceId = envPriceId || reqPriceId;
+
+    let mode = 'payment';
+    let line_items;
+
+    if (priceId) {
+      // Inspect the Price to determine if it's one-time or recurring
+      const price = await stripe.prices.retrieve(priceId);
+      if (!price?.active) {
+        return res.status(400).json({ error: 'checkout_failed', detail: `Stripe price ${priceId} is not active` });
+      }
+      mode = price.type === 'recurring' ? 'subscription' : 'payment';
+      line_items = [{ price: price.id, quantity: 1 }];
+    } else {
+      // Fallback inline price: one-time by default, or subscription if an interval is provided
+      const interval = body?.interval; // 'month' | 'year'
+      if (interval === 'month' || interval === 'year') {
+        mode = 'subscription';
+        line_items = [{
           price_data: {
             currency: 'usd',
-            unit_amount: 199, // $1.99 in cents
+            unit_amount: 199, // $1.99
+            product_data: { name: 'REPCRAFTER Access' },
+            recurring: { interval }
+          },
+          quantity: 1
+        }];
+      } else {
+        mode = 'payment';
+        line_items = [{
+          price_data: {
+            currency: 'usd',
+            unit_amount: 199, // $1.99
             product_data: { name: 'REPCRAFTER Access' }
           },
           quantity: 1
         }];
+      }
+    }
 
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode,
       success_url,
       cancel_url,
       line_items,
       allow_promotion_codes: true,
       billing_address_collection: 'auto',
-      customer_email,
-      // automatic_tax: { enabled: true }, // enable if needed
-      // metadata: { app: 'repcrafter' },
+      customer_email
+      // For subscriptions you can also pass:
+      // subscription_data: { trial_from_plan: true }
     });
 
     return res.status(200).json({ url: session.url });
