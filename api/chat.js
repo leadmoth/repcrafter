@@ -28,7 +28,6 @@ export default async function handler(req, res) {
     const payload = {
       chatInput: body.chatInput ?? body.message ?? '',
       sessionId: body.sessionId ?? body.session_id ?? undefined,
-      // pass through extras if your workflow uses them
       history: body.history,
       metadata: body.metadata,
     };
@@ -39,10 +38,33 @@ export default async function handler(req, res) {
       body: JSON.stringify(payload),
     });
 
-    const text = await resp.text();
-    res.status(resp.status);
-    res.setHeader('Content-Type', resp.headers.get('content-type') || 'text/plain');
-    return res.send(text);
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      let data = null;
+      try { data = await resp.json(); } catch {}
+      const reply =
+        (data && (
+          (typeof data.reply === 'string' && data.reply) ||
+          (Array.isArray(data.messages) && data.messages.map(m => m?.text ?? m).filter(Boolean).join('\n')) ||
+          (typeof data.text === 'string' && data.text) ||
+          (typeof data.answer === 'string' && data.answer) ||
+          (typeof data.output === 'string' && data.output) ||
+          (typeof data.completion === 'string' && data.completion) ||
+          (data?.choices?.[0]?.message?.content) ||
+          (data?.choices?.[0]?.text) ||
+          (typeof data.result === 'string' && data.result) ||
+          (typeof data.response === 'string' && data.response)
+        )) || '';
+
+      res.status(resp.status);
+      res.setHeader('Content-Type', 'application/json');
+      return res.send(JSON.stringify({ reply: reply || 'OK' }));
+    } else {
+      const text = await resp.text();
+      res.status(resp.status);
+      res.setHeader('Content-Type', 'text/plain');
+      return res.send(text || 'OK');
+    }
   } catch (e) {
     console.error('Proxy error:', e);
     return res.status(500).json({ error: 'Proxy error' });
